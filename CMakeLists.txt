@@ -12,31 +12,31 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall   -O3")
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -march=native")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
 
-# Check C++11 or C++0x support
+# Check C++14 or C++0x support
 include(CheckCXXCompilerFlag)
-CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX11)
+CHECK_CXX_COMPILER_FLAG("-std=c++14" COMPILER_SUPPORTS_CXX11)
 CHECK_CXX_COMPILER_FLAG("-std=c++0x" COMPILER_SUPPORTS_CXX0X)
 if(COMPILER_SUPPORTS_CXX11)
-   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
    add_definitions(-DCOMPILEDWITHC11)
-   message(STATUS "Using flag -std=c++11.")
+   message(STATUS "Using flag -std=c++14.")
 elseif(COMPILER_SUPPORTS_CXX0X)
    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
    add_definitions(-DCOMPILEDWITHC0X)
    message(STATUS "Using flag -std=c++0x.")
 else()
-   message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
+   message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} has no C++14 support. Please use a different C++ compiler.")
 endif()
 
 LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules)
 
-find_package(OpenCV 4.4)
-   if(NOT OpenCV_FOUND)
-      message(FATAL_ERROR "OpenCV > 4.4 not found.")
-   endif()
+#find_package(OpenCV 4.4)
+#   if(NOT OpenCV_FOUND)
+#      message(FATAL_ERROR "OpenCV > 4.4 not found.")
+#   endif()
 
-MESSAGE("OPENCV VERSION:")
-MESSAGE(${OpenCV_VERSION})
+#MESSAGE("OPENCV VERSION:")
+#MESSAGE(${OpenCV_VERSION})
 
 find_package(Eigen3 3.1.0 REQUIRED)
 find_package(Pangolin REQUIRED)
@@ -121,6 +121,54 @@ ${EIGEN3_LIBS}
 ${Pangolin_LIBRARIES}
 ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
 ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
+#/usr/local/lib/arm-linux-gnueabihf/libopencv_core.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_aruco.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_bgsegm.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_bioinspired.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_calib3d.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_ccalib.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_core.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_datasets.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_dnn_objdetect.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_dnn.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_dpm.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_face.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_features2d.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_flann.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_freetype.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_fuzzy.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_hdf.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_hfs.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_highgui.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_imgcodecs.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_img_hash.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_imgproc.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_line_descriptor.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_ml.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_objdetect.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_optflow.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_phase_unwrapping.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_photo.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_plot.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_reg.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_rgbd.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_saliency.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_sfm.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_shape.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_stereo.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_stitching.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_structured_light.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_superres.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_surface_matching.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_text.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_tracking.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_videoio.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_video.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_videostab.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_xfeatures2d.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_ximgproc.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_xobjdetect.so
+/usr/local/lib/arm-linux-gnueabihf/libopencv_xphoto.so
 -lboost_serialization
 -lcrypto
 )

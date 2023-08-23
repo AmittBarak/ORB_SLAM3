@@ -107,6 +107,7 @@ public:
     void SaveSubTrajectory(string strNameFile_frames, string strNameFile_kf, Map* pMap);
 
     float GetImageScale();
+    bool CheckCoherentRotation(const cv::Mat& R);
 
 #ifdef REGISTER_LOOP
     void RequestStop();
@@ -268,6 +269,15 @@ protected:
     // Initalization (only for monocular)
     bool mbReadyToInitializate;
     bool mbSetInit;
+    int mkpThreshold;
+    // interval statistical
+    double alphaValue;
+    int df;
+    int populationSize = 0;
+    // parameters for scoring evaluation in monocular initializaion
+    std::vector<double> initScoring;
+    double gaussianMean;
+    double gaussianVar;
 
     //Local Map
     KeyFrame* mpReferenceKF;

@@ -645,10 +645,12 @@ namespace ORB_SLAM3
         return nmatches;
     }
 
-    int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f> &vbPrevMatched, vector<int> &vnMatches12, int windowSize)
+    vector<int> ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f> &vbPrevMatched, vector<int> &vnMatches12, int windowSize)
     {
         int nmatches=0;
         vnMatches12 = vector<int>(F1.mvKeysUn.size(),-1);
+
+        vector<int> distancesForThreshold;
 
         vector<int> rotHist[HISTO_LENGTH];
         for(int i=0;i<HISTO_LENGTH;i++)
@@ -703,6 +705,8 @@ namespace ORB_SLAM3
             {
                 if(bestDist<(float)bestDist2*mfNNratio)
                 {
+                    //valid match
+                    distancesForThreshold.push_back(bestDist);
                     if(vnMatches21[bestIdx2]>=0)
                     {
                         vnMatches12[vnMatches21[bestIdx2]]=-1;
@@ -759,7 +763,19 @@ namespace ORB_SLAM3
             if(vnMatches12[i1]>=0)
                 vbPrevMatched[i1]=F2.mvKeysUn[vnMatches12[i1]].pt;
 
-        return nmatches;
+        // calculating mean of distances
+        double mean = -1;
+        double variance = 1;
+        if(distancesForThreshold.size()>0)
+        {
+            double mean = std::accumulate(distancesForThreshold.begin(),distancesForThreshold.end(), 0.0) / distancesForThreshold.size();
+            double variance = 0;
+            for(int i =0; i<distancesForThreshold.size(); i++){
+                variance += pow(distancesForThreshold[i]-mean,2);
+            }
+        }
+    
+        return vector<int> {nmatches, mean, variance};
     }
 
     int ORBmatcher::SearchByBoW(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &vpMatches12)

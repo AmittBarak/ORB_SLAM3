@@ -43,8 +43,8 @@ namespace ORB_SLAM3
 
 Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Atlas *pAtlas, KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, Settings* settings, const string &_nameSeq):
     mState(NO_IMAGES_YET), mSensor(sensor), mTrackedFr(0), mbStep(false),
-    mbOnlyTracking(false), mbMapUpdated(false), mbVO(false), mpORBVocabulary(pVoc), mpKeyFrameDB(pKFDB),
-    mbReadyToInitializate(false), mpSystem(pSys), mpViewer(NULL), bStepByStep(false),
+    mbOnlyTracking(false), mbMapUpdated(false), mbVO(false), alphaValue(1.96), df(1) , populationSize(0) , mpORBVocabulary(pVoc), mpKeyFrameDB(pKFDB),
+    mbReadyToInitializate(false),mkpThreshold(100) ,mpSystem(pSys), mpViewer(NULL), bStepByStep(false),
     mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpAtlas(pAtlas), mnLastRelocFrameId(0), time_recently_lost(5.0),
     mnInitialFrameId(0), mbCreatedMap(false), mnFirstFrameId(0), mpCamera2(nullptr), mpLastKeyFrame(static_cast<KeyFrame*>(NULL))
 {
@@ -2456,12 +2456,17 @@ void Tracking::MonocularInitialization()
 
             mInitialFrame = Frame(mCurrentFrame);
             mLastFrame = Frame(mCurrentFrame);
+            // unmatched keypoints - unknown status, meaning that the status of these keypoints has not been determined or assigned yet
             mvbPrevMatched.resize(mCurrentFrame.mvKeysUn.size());
+
+            // populate the mvbPrevMatched vector with the 2D coordinates (pt) of each keypoint.
             for(size_t i=0; i<mCurrentFrame.mvKeysUn.size(); i++)
                 mvbPrevMatched[i]=mCurrentFrame.mvKeysUn[i].pt;
 
+            // fill vector of matches with -1 (a vector that stores the indices of matched keypoints between the current frame and the previous frame during the initialization phase.)
             fill(mvIniMatches.begin(),mvIniMatches.end(),-1);
-
+            
+            // preintegrated IMU measurements from the last keyframe
             if (mSensor == System::IMU_MONOCULAR)
             {
                 if(mpImuPreintegratedFromLastKF)
@@ -2489,20 +2494,82 @@ void Tracking::MonocularInitialization()
 
         // Find correspondences
         ORBmatcher matcher(0.9,true);
-        int nmatches = matcher.SearchForInitialization(mInitialFrame,mCurrentFrame,mvbPrevMatched,mvIniMatches,100);
+        std::vector<int> searchedMmatches = matcher.SearchForInitialization(mInitialFrame,mCurrentFrame,mvbPrevMatched,mvIniMatches,100);
+        int nmatches = searchedMmatches[0];
+
+        // Scene complexity threshold
+        // TODO: check if uppder bound of keypoints
+        // gaussian mixer
+        // colors hitpalgot
+        // cornors
+        //int complexityThreshold = mCurrentFrame.mvKeysUn.size()/(mCurrentFrame.imLeft.cols*mCurrentFrame.imLeft.rows);
+        // feature score threshold
+        double featuresScore = searchedMmatches[1] * searchedMmatches[2];
 
         // Check if there are enough correspondences
-        if(nmatches<100)
+        if(populationSize<=1){
+            if(nmatches<100)
+            {
+                mbReadyToInitializate = false;
+                return;
+            }
+        }
+        
+        else
         {
-            mbReadyToInitializate = false;
-            return;
+            printf("in our else!!!\n");
+            double minThresh = gaussianMean - (alphaValue * (sqrt(gaussianVar)/sqrt(populationSize)));
+            double upperThresh = gaussianMean + (alphaValue * (sqrt(gaussianVar)/sqrt(populationSize)));
+            if(featuresScore>upperThresh || featuresScore<minThresh)
+            {
+                mbReadyToInitializate = false;
+                return;
+            }
         }
 
+        //update statistical interval
+        populationSize++;
+        initScoring.push_back(featuresScore);
+        gaussianMean = std::accumulate(initScoring.begin(),initScoring.end(),0) / populationSize;
+        gaussianVar = 0;
+        for(int i =0; i<initScoring.size(); i++){
+            gaussianVar += pow(initScoring[i]-gaussianMean,2) / initScoring.size();
+        } 
+
+
+
+        // output variables to estimate the camera pose
         Sophus::SE3f Tcw;
         vector<bool> vbTriangulated; // Triangulated Correspondences (mvIniMatches)
 
+        // reconstruct the 3D points using 
         if(mpCamera->ReconstructWithTwoViews(mInitialFrame.mvKeysUn,mCurrentFrame.mvKeysUn,mvIniMatches,Tcw,mvIniP3D,vbTriangulated))
         {
+            // Verify the Essential matrix's coherence with the scene
+            bool bCoherent = CheckCoherentRotation(Tcw.rotationMatrix());
+
+            // Geometrical validation
+            int positive_depth_count = 0;
+            for (size_t i = 0; i < mvIniP3D.size(); i++) {
+                if (mvIniMatches[i] < 0) continue;
+
+                cv::Mat p3d = mvIniP3D[i];
+                cv::Mat R = Tcw.rotationMatrix();
+                cv::Mat t = Tcw.translation();
+                double dot_product = p3d.dot(t);
+
+                if (dot_product > 0) {
+                    positive_depth_count++;
+                }
+            }
+
+            double percentage_positive_depth = (double)positive_depth_count / (double)mvIniP3D.size();
+            if (percentage_positive_depth < 0.75 || !bCoherent) {
+                // If more than 25% of the points have a negative dot product with the translation, or rotation is not coherent, reset initialization
+                mbReadyToInitializate = false;
+                return;
+            }
+            // invalidate any matches that are not successfully triangulated (triangulate - process of estimating the 3D position of a point in space)
             for(size_t i=0, iend=mvIniMatches.size(); i<iend;i++)
             {
                 if(mvIniMatches[i]>=0 && !vbTriangulated[i])
@@ -2513,13 +2580,24 @@ void Tracking::MonocularInitialization()
             }
 
             // Set Frame Poses
+            // initial frame is set to the identity pose
             mInitialFrame.SetPose(Sophus::SE3f());
+            // current frame is set to the estimated camera pose
             mCurrentFrame.SetPose(Tcw);
-
+            // create the initial map using the triangulated 3D points and the current frame
             CreateInitialMapMonocular();
         }
     }
 }
+
+bool Tracking::CheckCoherentRotation(const cv::Mat& R) {
+    if (std::fabs(cv::determinant(R)) - 1.0 > 1e-7) {
+        return false;
+    }
+
+    return true;
+}
+
 
 
 
@@ -2529,10 +2607,11 @@ void Tracking::CreateInitialMapMonocular()
     KeyFrame* pKFini = new KeyFrame(mInitialFrame,mpAtlas->GetCurrentMap(),mpKeyFrameDB);
     KeyFrame* pKFcur = new KeyFrame(mCurrentFrame,mpAtlas->GetCurrentMap(),mpKeyFrameDB);
 
+    // if there is in addition imu
     if(mSensor == System::IMU_MONOCULAR)
         pKFini->mpImuPreintegrated = (IMU::Preintegrated*)(NULL);
 
-
+    // BoW representation is used to represent keyframes based on the visual descriptors of the keypoints detected in those frames
     pKFini->ComputeBoW();
     pKFcur->ComputeBoW();
 
@@ -2542,6 +2621,7 @@ void Tracking::CreateInitialMapMonocular()
 
     for(size_t i=0; i<mvIniMatches.size();i++)
     {
+        // if isnt invalid
         if(mvIniMatches[i]<0)
             continue;
 
@@ -2550,12 +2630,15 @@ void Tracking::CreateInitialMapMonocular()
         worldPos << mvIniP3D[i].x, mvIniP3D[i].y, mvIniP3D[i].z;
         MapPoint* pMP = new MapPoint(worldPos,pKFcur,mpAtlas->GetCurrentMap());
 
+        // The pKFini KeyFrame is associated with the MapPoint at index i
         pKFini->AddMapPoint(pMP,i);
+        // KeyFrame is associated with the MapPoint at the matched index 
         pKFcur->AddMapPoint(pMP,mvIniMatches[i]);
 
         pMP->AddObservation(pKFini,i);
         pMP->AddObservation(pKFcur,mvIniMatches[i]);
 
+        // Descriptor and depth information
         pMP->ComputeDistinctiveDescriptors();
         pMP->UpdateNormalAndDepth();
 
@@ -2576,9 +2659,11 @@ void Tracking::CreateInitialMapMonocular()
     sMPs = pKFini->GetMapPoints();
 
     // Bundle Adjustment
+    // The map is optimized using a bundle adjustment algorithm
     Verbose::PrintMess("New Map created with " + to_string(mpAtlas->MapPointsInMap()) + " points", Verbose::VERBOSITY_QUIET);
     Optimizer::GlobalBundleAdjustemnt(mpAtlas->GetCurrentMap(),20);
 
+    // Scale Adjustment
     float medianDepth = pKFini->ComputeSceneMedianDepth(2);
     float invMedianDepth;
     if(mSensor == System::IMU_MONOCULAR)
@@ -2586,6 +2671,7 @@ void Tracking::CreateInitialMapMonocular()
     else
         invMedianDepth = 1.0f/medianDepth;
 
+    // Checking Initialization Quality
     if(medianDepth<0 || pKFcur->TrackedMapPoints(1)<50) // TODO Check, originally 100 tracks
     {
         Verbose::PrintMess("Wrong initialization, reseting...", Verbose::VERBOSITY_QUIET);
@@ -2594,11 +2680,14 @@ void Tracking::CreateInitialMapMonocular()
     }
 
     // Scale initial baseline
+    // scaling adjusts the baseline according to the estimated median depth of the scene
     Sophus::SE3f Tc2w = pKFcur->GetPose();
     Tc2w.translation() *= invMedianDepth;
     pKFcur->SetPose(Tc2w);
 
     // Scale points
+    // The world positions of the map points associated with pKFini are scaled by invMedianDepth
+    // Additionally, the normal vectors and depths of the map points are updated accordingly.
     vector<MapPoint*> vpAllMapPoints = pKFini->GetMapPointMatches();
     for(size_t iMP=0; iMP<vpAllMapPoints.size(); iMP++)
     {
@@ -2619,16 +2708,18 @@ void Tracking::CreateInitialMapMonocular()
         mpImuPreintegratedFromLastKF = new IMU::Preintegrated(pKFcur->mpImuPreintegrated->GetUpdatedBias(),pKFcur->mImuCalib);
     }
 
-
+    // Updating Local Mapper
     mpLocalMapper->InsertKeyFrame(pKFini);
     mpLocalMapper->InsertKeyFrame(pKFcur);
     mpLocalMapper->mFirstTs=pKFcur->mTimeStamp;
 
+    // Updating Current Frame and Last Keyframe
     mCurrentFrame.SetPose(pKFcur->GetPose());
     mnLastKeyFrameId=mCurrentFrame.mnId;
     mpLastKeyFrame = pKFcur;
     //mnLastRelocFrameId = mInitialFrame.mnId;
 
+    // Updating Local Keyframes and Map Points
     mvpLocalKeyFrames.push_back(pKFcur);
     mvpLocalKeyFrames.push_back(pKFini);
     mvpLocalMapPoints=mpAtlas->GetAllMapPoints();
@@ -2636,6 +2727,7 @@ void Tracking::CreateInitialMapMonocular()
     mCurrentFrame.mpReferenceKF = pKFcur;
 
     // Compute here initial velocity
+    // The initial velocity of the camera is computed based on the poses of the last keyframe (vKFs.back()) and the first keyframe (vKFs.front()) in the atlas
     vector<KeyFrame*> vKFs = mpAtlas->GetAllKeyFrames();
 
     Sophus::SE3f deltaT = vKFs.back()->GetPose() * vKFs.front()->GetPoseInverse();
@@ -2645,6 +2737,7 @@ void Tracking::CreateInitialMapMonocular()
     double aux = (mCurrentFrame.mTimeStamp-mLastFrame.mTimeStamp)/(mCurrentFrame.mTimeStamp-mInitialFrame.mTimeStamp);
     phi *= aux;
 
+    // Updating Map and Visualization
     mLastFrame = Frame(mCurrentFrame);
 
     mpAtlas->SetReferenceMapPoints(mvpLocalMapPoints);
